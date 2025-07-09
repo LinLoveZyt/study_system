@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 学习教练</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        html { font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        body { background-color: #111827; color: #d1d5db; }
+        .card { background-color: #1f2937; border: 1px solid #374151; border-radius: 0.75rem; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; font-weight: 600; padding: 0.6rem 1.2rem; border-radius: 0.5rem; transition: all 0.2s ease-in-out; }
+        .btn-primary { background-color: #3b82f6; color: white; }
+        .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
+        .btn-secondary { background-color: #4b5563; color: white; }
+        .btn-secondary:hover:not(:disabled) { background-color: #374151; }
+        .btn:disabled { background-color: #4b5563; cursor: not-allowed; opacity: 0.6; }
+        .form-input, .form-select, .form-textarea { background-color: #374151; border-color: #4b5563; color: #d1d5db; border-radius: 0.5rem; width: 100%; padding: 0.75rem; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { background-color: #4b5563; border-color: #3b82f6; box-shadow: none; color: #ffffff; outline: none; }
+        .form-label { display: block; font-weight: 600; color: #d1d5db; margin-bottom: 0.5rem; }
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background-color: #1f2937; color: white; padding: 1rem 1.5rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50; transform: translateY(200%); opacity: 0; transition: all 0.5s ease; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background-color: #16a34a; }
+        .toast.error { background-color: #dc2626; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app" class="min-h-screen flex flex-col items-center justify-center p-4" v-cloak>
+
+        <!-- Loading Spinner -->
+        <div v-if="isLoading" class="text-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+            <p class="mt-4 text-lg">正在初始化学习环境...</p>
+        </div>
+
+        <!-- Assessment Wizard -->
+        <div v-else-if="!profileExists" class="w-full max-w-3xl">
+            <div class="card p-8">
+                <div class="text-center mb-8">
+                    <i class="fas fa-user-astronaut text-5xl text-blue-400 mb-4"></i>
+                    <h1 class="text-3xl font-bold text-white">开启您的个性化学习之旅</h1>
+                    <p class="text-gray-400 mt-2">为了给您量身定制学习计划，请先完成这份快速评估问卷。</p>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-8">
+                    <div class="bg-blue-600 h-2.5 rounded-full" :style="{ width: (assessmentStep / 4 * 100) + '%' }"></div>
+                </div>
+
+                <!-- Step 1: Goals -->
+                <div v-if="assessmentStep === 1">
+                    <h2 class="text-2xl font-semibold mb-6 text-white"><i class="fas fa-bullseye mr-3"></i>目标与动机</h2>
+                    <div class="space-y-6">
+                        <div>
+                            <label class="form-label" for="goal">您的主要学习目标是什么？</label>
+                            <input id="goal" type="text" v-model="assessment.goal" class="form-input" placeholder="例如：掌握 FastAPI 框架开发后端 API">
+                        </div>
+                        <div>
+                            <label class="form-label" for="motivation">这个目标对您为什么重要？</label>
+                            <textarea id="motivation" v-model="assessment.motivation" class="form-textarea" rows="3" placeholder="例如：为了完成我的个人项目，提升求职竞争力"></textarea>
+                        </div>
+                        <div>
+                            <label class="form-label">您认为最大的潜在学习障碍是？</label>
+                            <select v-model="assessment.barrier" class="form-select">
+                                <option>时间管理困难</option>
+                                <option>内容太难容易放弃</option>
+                                <option>缺乏反馈，不确定学习效果</option>
+                                <option>容易分心和拖延</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Learning Style -->
+                <div v-if="assessmentStep === 2">
+                    <h2 class="text-2xl font-semibold mb-6 text-white"><i class="fas fa-paint-brush mr-3"></i>学习风格</h2>
+                    <div class="space-y-6">
+                        <div>
+                            <label class="form-label">学习复杂软件操作时，您最倾向于？</label>
+                            <select v-model="assessment.vark_style" class="form-select">
+                                <option value="read-write">看带截图和文字的详细文档</option>
+                                <option value="visual">观看一步步操作的视频教程</option>
+                                <option value="kinesthetic">直接上手摸索，边试边学</option>
+                                <option value="auditory">听专家口头讲解关键逻辑</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">您更喜欢哪种学习环境？</label>
+                            <select v-model="assessment.social_style" class="form-select">
+                                <option value="independent">独自一人，安安静静地研究</option>
+                                <option value="collaborative">和他人一起讨论，互相讲解</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">您更喜欢哪种学习路径？</label>
+                            <select v-model="assessment.structure_style" class="form-select">
+                                <option value="structured">清晰的教学大纲，按部就班</option>
+                                <option value="exploratory">核心资源，自由探索发现</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Cognitive Profile -->
+                <div v-if="assessmentStep === 3">
+                    <h2 class="text-2xl font-semibold mb-6 text-white"><i class="fas fa-brain mr-3"></i>认知与元认知</h2>
+                     <div class="space-y-6">
+                        <div>
+                            <label class="form-label">读完一段复杂材料后，您有多经常停下来用自己的话总结？</label>
+                            <select v-model="assessment.metacognition" class="form-select">
+                                <option value="high">总是 / 经常</option>
+                                <option value="medium">有时</option>
+                                <option value="low">很少 / 从不</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">对于即将学习的新领域，您的自信程度如何？</label>
+                             <select v-model="assessment.confidence" class="form-select">
+                                <option value="low">完全陌生，有点没底</option>
+                                <option value="medium">了解一些，但不系统</option>
+                                <option value="high">比较熟悉，希望深入</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">学习新知识时，您通常觉得哪个环节最困难？</label>
+                            <select v-model="assessment.difficulty" class="form-select">
+                                <option>理解抽象的核心概念</option>
+                                <option>将知识用于解决实际问题</option>
+                                <option>记忆关键信息和步骤</option>
+                                <option>建立知识的整体框架</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Step 4: Review and Submit -->
+                <div v-if="assessmentStep === 4">
+                    <h2 class="text-2xl font-semibold mb-6 text-white"><i class="fas fa-check-double mr-3"></i>确认并提交</h2>
+                    <div class="bg-gray-800 p-4 rounded-lg space-y-2 text-gray-300">
+                        <p><strong>学习目标:</strong> {{ assessment.goal }}</p>
+                        <p><strong>学习风格:</strong> {{ assessment.vark_style }}, {{ assessment.social_style }}, {{ assessment.structure_style }}</p>
+                        <p><strong>认知习惯:</strong> 自我总结频率({{ assessment.metacognition }})</p>
+                    </div>
+                    <p class="text-gray-400 mt-4">我们将基于以上信息为您生成个性化画像，准备好了吗？</p>
+                </div>
+
+
+                <!-- Navigation -->
+                <div class="mt-8 pt-6 border-t border-gray-700 flex justify-between items-center">
+                    <button @click="assessmentStep--" v-if="assessmentStep > 1" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left mr-2"></i>上一步
+                    </button>
+                    <div v-else></div> <!-- Placeholder for alignment -->
+                    
+                    <button @click="assessmentStep++" v-if="assessmentStep < 4" class="btn btn-primary">
+                        下一步<i class="fas fa-arrow-right ml-2"></i>
+                    </button>
+                    <button @click="submitAssessment" v-if="assessmentStep === 4" :disabled="isSubmitting" class="btn btn-primary">
+                        <i v-if="isSubmitting" class="fas fa-spinner fa-spin mr-2"></i>
+                        {{ isSubmitting ? '正在生成画像...' : '完成并提交' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div v-else class="w-full max-w-5xl">
+            <header class="flex justify-between items-center mb-8">
+                <div class="flex items-center">
+                    <i class="fas fa-rocket text-4xl text-blue-500 mr-4"></i>
+                    <div>
+                        <h1 class="text-3xl font-bold text-white">学习工作台</h1>
+                        <p class="text-gray-400">欢迎回来！准备好开始新的学习任务了吗？</p>
+                    </div>
+                </div>
+                <button @click="showTaskModal = true" class="btn btn-primary text-lg">
+                    <i class="fas fa-plus mr-2"></i>开启新学习任务
+                </button>
+            </header>
+
+            <!-- Task List -->
+            <div v-if="tasks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div v-for="task in tasks" :key="task.task_id" class="card p-6 flex flex-col justify-between hover:border-blue-500 transition-all duration-300 hover:scale-105">
+                    <div>
+                        <h3 class="text-xl font-bold text-white mb-2">{{ task.title }}</h3>
+                        <p class="text-sm text-gray-400 mb-4">创建于: {{ new Date(task.created_at).toLocaleString() }}</p>
+                    </div>
+                    <a :href="API_BASE_URL + task.pdf_url" target="_blank" class="btn btn-secondary self-start">
+                        <i class="fas fa-file-pdf mr-2"></i>查看学习资料
+                    </a>
+                </div>
+            </div>
+            <div v-else class="text-center card p-12">
+                <i class="fas fa-box-open text-5xl text-gray-500 mb-4"></i>
+                <h3 class="text-2xl font-semibold text-white">空空如也</h3>
+                <p class="text-gray-400 mt-2">您还没有任何学习任务，点击右上角按钮开始吧！</p>
+            </div>
+        </div>
+
+        <!-- New Task Modal -->
+        <div v-if="showTaskModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40">
+            <div class="card w-full max-w-2xl">
+                <div class="p-5 border-b border-gray-700 flex justify-between items-center">
+                    <h3 class="text-2xl font-semibold text-white">创建新的学习任务</h3>
+                    <button @click="showTaskModal = false" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                </div>
+                <div class="p-8">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="form-label" for="task-topic">学习主题 / 目标 (必填)</label>
+                            <input id="task-topic" type="text" v-model="newTask.topic" class="form-input" placeholder="例如：学习 Python 的异步编程">
+                        </div>
+                        <div>
+                            <label class="form-label" for="task-keywords">关键词 (选填, 逗号分隔)</label>
+                            <input id="task-keywords" type="text" v-model="newTask.keywords" class="form-input" placeholder="例如：asyncio, async/await, coroutine">
+                        </div>
+                        <div>
+                            <label class="form-label" for="task-level">我当前的知识水平是？</label>
+                            <select id="task-level" v-model="newTask.knowledge_level" class="form-select">
+                                <option value="beginner">纯新手，从零开始</option>
+                                <option value="intermediate">了解一些基础概念</option>
+                                <option value="advanced">有过一些实践，希望深入</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-5 border-t border-gray-700 flex justify-end">
+                    <button @click="createTask" :disabled="isSubmitting" class="btn btn-primary">
+                        <i v-if="isSubmitting" class="fas fa-spinner fa-spin mr-2"></i>
+                        {{ isSubmitting ? '正在生成学习资料...' : '创建并生成资料' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast" :class="toast.type">
+            {{ toast.message }}
+        </div>
+    </div>
+
+    <script>
+    const { createApp, ref, onMounted, reactive } = Vue
+
+    createApp({
+        setup() {
+            const API_BASE_URL = 'http://127.0.0.1:8000';
+            
+            // App State
+            const isLoading = ref(true);
+            const isSubmitting = ref(false);
+            const profileExists = ref(false);
+            const toast = reactive({ show: false, message: '', type: 'success' });
+
+            // Assessment State
+            const assessmentStep = ref(1);
+            const assessment = reactive({
+                goal: '',
+                motivation: '',
+                barrier: '时间管理困难',
+                vark_style: 'read-write',
+                social_style: 'independent',
+                structure_style: 'structured',
+                metacognition: 'medium',
+                confidence: 'low',
+                difficulty: '理解抽象的核心概念',
+            });
+
+            // Dashboard State
+            const tasks = ref([]);
+            const showTaskModal = ref(false);
+            const newTask = reactive({
+                topic: '',
+                keywords: '',
+                knowledge_level: 'beginner'
+            });
+
+            // --- Methods ---
+            const showToast = (message, type = 'success', duration = 3000) => {
+                toast.message = message;
+                toast.type = type;
+                const toastEl = document.getElementById('toast');
+                toastEl.classList.add('show');
+                setTimeout(() => {
+                    toastEl.classList.remove('show');
+                }, duration);
+            };
+
+            const checkProfile = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/profile/check`);
+                    if (!response.ok) throw new Error('无法连接到服务器');
+                    const data = await response.json();
+                    profileExists.value = data.profile_exists;
+                    if (profileExists.value) {
+                        fetchTasks();
+                    }
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    isLoading.value = false;
+                }
+            };
+
+            const submitAssessment = async () => {
+                isSubmitting.value = true;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/profile/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(assessment)
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || '创建画像失败');
+                    }
+                    profileExists.value = true;
+                    showToast('个人画像创建成功！', 'success');
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    isSubmitting.value = false;
+                }
+            };
+
+            const fetchTasks = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/tasks`);
+                    if (!response.ok) throw new Error('获取任务列表失败');
+                    tasks.value = await response.json();
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            };
+
+            const createTask = async () => {
+                if (!newTask.topic) {
+                    return showToast('请填写学习主题！', 'error');
+                }
+                isSubmitting.value = true;
+                const payload = {
+                    ...newTask,
+                    keywords: newTask.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                };
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/tasks/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || '创建任务失败');
+                    }
+                    showToast('学习资料生成成功！', 'success');
+                    showTaskModal.value = false;
+                    newTask.topic = '';
+                    newTask.keywords = '';
+                    fetchTasks(); // Refresh the task list
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    isSubmitting.value = false;
+                }
+            };
+
+
+            onMounted(() => {
+                checkProfile();
+            });
+
+            return {
+                isLoading,
+                isSubmitting,
+                profileExists,
+                assessmentStep,
+                assessment,
+                submitAssessment,
+                tasks,
+                showTaskModal,
+                newTask,
+                createTask,
+                toast,
+                API_BASE_URL
+            };
+        }
+    }).mount('#app')
+    </script>
+</body>
+</html>
